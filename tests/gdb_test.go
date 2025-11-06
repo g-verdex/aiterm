@@ -20,12 +20,11 @@ func TestGDBInteractiveAgainstSimpleProgram(t *testing.T) {
     if _, err := exec.LookPath("gcc"); err != nil { t.Skip("gcc not found") }
     if _, err := exec.LookPath("gdb"); err != nil { t.Skip("gdb not found") }
 
-    dir := filepath.Clean("..")
-    base, stop := startServer(t, dir)
+    base, stop := startServer(t)
     defer stop()
 
     // Build the C program
-    src := filepath.Join(dir, "tests", "assets", "simpleprogram.c")
+    src := filepath.Join(modRoot(t), "tests", "assets", "simpleprogram.c")
     tmp := t.TempDir()
     bin := filepath.Join(tmp, "simpleprogram")
     args := []string{"-g", "-O0", "-fno-pie", "-no-pie", "-o", bin, src}

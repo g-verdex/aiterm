@@ -262,7 +262,9 @@ func (s *Server) handleBridgeTmuxCreate(w http.ResponseWriter, r *http.Request) 
     interactive := lookErr == nil
     if interactive {
         // Run the bridge helper inside tmux; it will proxy input/output
-        bridgeCmd := "stty -echo; aiterm-bridge -server 'http://127.0.0.1:8099' -id '" + req.ID + "'"
+        base := r.Host
+        if base == "" { base = "127.0.0.1:8099" }
+        bridgeCmd := "stty -echo; aiterm-bridge -server 'http://" + base + "' -id '" + req.ID + "'"
         cmd = exec.Command("tmux", "-S", socket, "-f", "/dev/null", "new-session", "-d", "-s", session, "sh", "-lc", bridgeCmd)
     } else {
         logPath, ok := s.pty.LogPath(req.ID)

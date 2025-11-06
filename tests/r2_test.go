@@ -15,12 +15,11 @@ func TestRadare2InteractiveAgainstSimpleProgram(t *testing.T) {
     if _, err := exec.LookPath("radare2"); err != nil { t.Skip("radare2 not found") }
     if _, err := exec.LookPath("gcc"); err != nil { t.Skip("gcc not found") }
 
-    dir := filepath.Clean("..")
-    base, stop := startServer(t, dir)
+    base, stop := startServer(t)
     defer stop()
 
     // Build the C program
-    src := filepath.Join(dir, "tests", "assets", "simpleprogram.c")
+    src := filepath.Join(modRoot(t), "tests", "assets", "simpleprogram.c")
     bin := filepath.Join(t.TempDir(), "simpleprogram")
     cmd := exec.Command("gcc", "-g", "-O0", "-fno-pie", "-no-pie", "-o", bin, src)
     if out, err := cmd.CombinedOutput(); err != nil {

@@ -34,20 +34,36 @@ type ptySendReq struct{ ID string `json:"id"`; Data string `json:"data"` }
 type ptyReadReq struct{ ID string `json:"id"`; Since uint64 `json:"since_seq"`; Max int `json:"max_bytes"`; TimeoutMS int64 `json:"timeout_ms"` }
 type ptyReadResp struct{ Chunks []struct{ Seq uint64 `json:"seq"`; Data string `json:"data"` } `json:"chunks"`; Closed bool `json:"closed"` }
 
-func buildBinaries(t *testing.T, dir string) (aitermd, aiterm, bridge string) {
+func modRoot(t *testing.T) string {
     t.Helper()
+    wd, _ := os.Getwd()
+    dir := wd
+    for i := 0; i < 6; i++ {
+        if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+            return dir
+        }
+        dir = filepath.Dir(dir)
+    }
+    t.Fatalf("unable to find module root from %s", wd)
+    return ""
+}
+
+func buildBinaries(t *testing.T) (aitermd, aiterm, bridge string) {
+    t.Helper()
+    root := modRoot(t)
     run := func(out, pkg string){
         cmd := exec.Command("go","build","-o",out,pkg)
-        cmd.Dir = dir
+        cmd.Dir = root
         cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
         outb, err := cmd.CombinedOutput()
         if err != nil { t.Fatalf("build %s: %v\n%s", pkg, err, outb) }
     }
-    bindir := filepath.Join(dir, "bin")
+    bindir := filepath.Join(root, "bin")
     _ = os.MkdirAll(bindir, 0o755)
-    aitermd = filepath.Join(bindir, "aitermd")
-    aiterm = filepath.Join(bindir, "aiterm")
-    bridge = filepath.Join(bindir, "aiterm-bridge")
+    // absolute output paths
+    aitermd, _ = filepath.Abs(filepath.Join(bindir, "aitermd"))
+    aiterm, _ = filepath.Abs(filepath.Join(bindir, "aiterm"))
+    bridge, _ = filepath.Abs(filepath.Join(bindir, "aiterm-bridge"))
     run(aitermd, "./cmd/aitermd")
     run(aiterm, "./cmd/aiterm")
     run(bridge, "./cmd/aiterm-bridge")
@@ -64,12 +80,13 @@ func pickPort(t *testing.T) string {
     return port
 }
 
-func startServer(t *testing.T, dir string) (baseURL string, stop func()) {
+func startServer(t *testing.T) (baseURL string, stop func()) {
     t.Helper()
-    aitermd, _, _ := buildBinaries(t, dir)
+    root := modRoot(t)
+    aitermd, _, _ := buildBinaries(t)
     port := pickPort(t)
     cmd := exec.Command(aitermd, "-addr", ":"+port)
-    cmd.Env = append(os.Environ(), fmt.Sprintf("PATH=%s:%s", filepath.Join(dir,"bin"), os.Getenv("PATH")))
+    cmd.Env = append(os.Environ(), fmt.Sprintf("PATH=%s:%s", filepath.Join(root,"bin"), os.Getenv("PATH")))
     cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
     if err := cmd.Start(); err != nil { t.Fatalf("start server: %v", err) }
     baseURL = "http://127.0.0.1:"+port
@@ -92,8 +109,7 @@ func pingShellRun(base string) bool {
 }
 
 func TestShellRunAndPTYFlow(t *testing.T){
-    dir := filepath.Clean("..")
-    base, stop := startServer(t, dir)
+    base, stop := startServer(t)
     defer stop()
     // shell.run
     b,_ := json.Marshal(shellRunReq{Argv: []string{"/bin/echo","ok"}})
