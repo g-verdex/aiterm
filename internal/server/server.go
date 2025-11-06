@@ -261,10 +261,10 @@ func (s *Server) handleBridgeTmuxCreate(w http.ResponseWriter, r *http.Request) 
     var cmd *exec.Cmd
     interactive := lookErr == nil
     if interactive {
-        // Run the bridge helper inside tmux; it will proxy input/output
+        // Interactive bridge: keep normal terminal behavior (echo on, alt-screen allowed)
         base := r.Host
         if base == "" { base = "127.0.0.1:8099" }
-        bridgeCmd := "stty -echo; aiterm-bridge -server 'http://" + base + "' -id '" + req.ID + "'"
+        bridgeCmd := "aiterm-bridge -server 'http://" + base + "' -id '" + req.ID + "'"
         cmd = exec.Command("tmux", "-S", socket, "-f", "/dev/null", "new-session", "-d", "-s", session, "sh", "-lc", bridgeCmd)
     } else {
         logPath, ok := s.pty.LogPath(req.ID)
@@ -289,8 +289,10 @@ func (s *Server) handleBridgeTmuxCreate(w http.ResponseWriter, r *http.Request) 
     opt("set-option", "-g", "abandon-focus-on-exit", "on")
     opt("set-option", "-g", "assume-paste-time", "0")
     opt("set-option", "-g", "escape-time", "0")
-    // disable alt screen
-    opt("set-option", "-g", "terminal-overrides", ",*:smcup@:rmcup@")
+    // disable alt screen only for read-only fallback to keep scrollback
+    if !interactive {
+        opt("set-option", "-g", "terminal-overrides", ",*:smcup@:rmcup@")
+    }
 
     attach := "tmux -S '" + socket + "' attach -t '" + session + "'"
     if !interactive { attach += " -r" }

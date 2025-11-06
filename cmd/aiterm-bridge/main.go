@@ -30,6 +30,7 @@ func main() {
     stop := make(chan os.Signal, 1)
     signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
     done := int32(0)
+    closedCh := make(chan struct{})
 
     // Reader goroutine: follow PTY output and print to stdout
     go func() {
@@ -57,6 +58,8 @@ func main() {
                 time.Sleep(50 * time.Millisecond)
             }
             if rr.Closed {
+                // Signal main loop: PTY closed; exit bridge
+                select { case <-closedCh: default: close(closedCh) }
                 break
             }
         }
@@ -67,6 +70,9 @@ func main() {
     for {
         select {
         case <-stop:
+            atomic.StoreInt32(&done, 1)
+            return
+        case <-closedCh:
             atomic.StoreInt32(&done, 1)
             return
         default:
