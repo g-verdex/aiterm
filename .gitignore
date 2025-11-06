@@ -1,0 +1,9 @@
+# build artifacts
+bin/
+tests/build/
+
+# logs
+*.log
+
+# nested copy (if any)
+ai-terminal/
