@@ -39,6 +39,11 @@ type PTYSession struct {
 
     // logging
     logf *os.File
+
+    // perf: notify channel for readers to wait without busy-waiting
+    notify chan struct{}
+    // perf: track total buffered bytes for O(1) trimming
+    bufBytes int
 }
 
 // PTYManager manages multiple PTY sessions.
@@ -95,6 +100,7 @@ func (m *PTYManager) PTYOpen(argv []string, rows, cols int, cwd string, env map[
         chunks:   make([]Chunk, 0, 128),
         nextSeq:  1,
         closedCh: make(chan struct{}),
+        notify:   make(chan struct{}),
     }
     s.cond = sync.NewCond(&s.mu)
 
@@ -126,9 +132,17 @@ func (s *PTYSession) reader() {
             copy(data, buf[:n])
             s.chunks = append(s.chunks, Chunk{Seq: s.nextSeq, Stream: "stdout", Data: data, Ts: time.Now()})
             s.nextSeq++
-            // enforce cap
-            s.enforceCap()
+            // track and enforce cap in O(1)
+            s.bufBytes += len(data)
+            for s.bufBytes > capSize() && len(s.chunks) > 0 {
+                s.bufBytes -= len(s.chunks[0].Data)
+                s.chunks = s.chunks[1:]
+            }
             s.cond.Broadcast()
+            // notify non-Cond waiters
+            old := s.notify
+            s.notify = make(chan struct{})
+            close(old)
             s.mu.Unlock()
             // async log write (best-effort)
             if s.logf != nil {
@@ -141,6 +155,10 @@ func (s *PTYSession) reader() {
                 s.closed = true
                 close(s.closedCh)
                 s.cond.Broadcast()
+                // notify waiters of closure
+                old := s.notify
+                s.notify = make(chan struct{})
+                close(old)
                 s.mu.Unlock()
             }
             return
@@ -162,20 +180,10 @@ func (s *PTYSession) waiter() {
         close(s.closedCh)
     }
     s.cond.Broadcast()
+    old := s.notify
+    s.notify = make(chan struct{})
+    close(old)
     s.mu.Unlock()
-}
-
-func (s *PTYSession) enforceCap() {
-    // crude eviction by concatenated length
-    total := 0
-    for i := len(s.chunks) - 1; i >= 0; i-- {
-        total += len(s.chunks[i].Data)
-        if total > capSize() {
-            // drop head up to i
-            s.chunks = append([]Chunk(nil), s.chunks[i+1:]...)
-            break
-        }
-    }
 }
 
 func capSize() int { return 1 << 20 }
@@ -195,34 +203,43 @@ func (m *PTYManager) PTYRead(id string, sinceSeq uint64, maxBytes int, timeout t
     if s == nil {
         return nil, false, errors.New("no such session")
     }
-    deadline := time.Now().Add(timeout)
-    for {
-        s.mu.Lock()
-        // collect chunks
+    // First attempt to collect without waiting
+    collect := func() ([]Chunk, bool) {
         var out []Chunk
-        bytes := 0
+        bytesN := 0
         for _, c := range s.chunks {
             if c.Seq <= sinceSeq { continue }
             out = append(out, c)
-            bytes += len(c.Data)
-            if maxBytes > 0 && bytes >= maxBytes {
+            bytesN += len(c.Data)
+            if maxBytes > 0 && bytesN >= maxBytes {
                 break
             }
         }
-        closed := s.closed
-        if len(out) > 0 || closed {
-            s.mu.Unlock()
-            return out, closed, nil
-        }
-        // wait
-        now := time.Now()
-        if timeout > 0 && now.After(deadline) {
-            s.mu.Unlock()
-            return nil, s.closed, nil
-        }
-        // Wait with a small timeout by unlocking and sleeping to avoid deadlocks
+        return out, s.closed
+    }
+
+    s.mu.Lock()
+    out, closed := collect()
+    if len(out) > 0 || closed || timeout <= 0 {
         s.mu.Unlock()
-        time.Sleep(50 * time.Millisecond)
+        return out, closed, nil
+    }
+    // Wait efficiently on notify or until timeout
+    notify := s.notify
+    s.mu.Unlock()
+    var timer <-chan time.Time
+    if timeout > 0 { timer = time.After(timeout) }
+    select {
+    case <-notify:
+        s.mu.Lock()
+        out, closed = collect()
+        s.mu.Unlock()
+        return out, closed, nil
+    case <-timer:
+        s.mu.Lock()
+        _, closed = collect()
+        s.mu.Unlock()
+        return nil, closed, nil
     }
 }
 

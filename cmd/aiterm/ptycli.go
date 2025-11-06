@@ -86,7 +86,7 @@ func ptyFollowCmd(args []string) {
     fs := flag.NewFlagSet("pty-follow", flag.ExitOnError)
     server := defaultServer(fs)
     id := fs.String("id", "", "session id")
-    timeoutStr := fs.String("timeout", "500ms", "read timeout")
+    timeoutStr := fs.String("timeout", "1500ms", "read timeout")
     if err := fs.Parse(args); err != nil { os.Exit(2) }
     if *id == "" { fmt.Fprintln(os.Stderr, "--id required"); os.Exit(2) }
     to, err := time.ParseDuration(*timeoutStr)
