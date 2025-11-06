@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-    addr := flag.String("addr", ":8088", "listen address")
+    addr := flag.String("addr", ":5011", "listen address")
     flag.Parse()
 
     srv := server.New()

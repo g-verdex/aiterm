@@ -17,7 +17,7 @@ import (
 
 func defaultServer(fs *flag.FlagSet) *string {
     def := os.Getenv("AITERM_SERVER")
-    if def == "" { def = "http://127.0.0.1:8099" }
+    if def == "" { def = "http://127.0.0.1:5011" }
     return fs.String("server", def, "aitermd server URL")
 }
 

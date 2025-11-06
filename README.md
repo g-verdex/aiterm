@@ -22,10 +22,10 @@ Build
   - go build -o ./bin/aiterm-bridge ./cmd/aiterm-bridge
 
 Run
-- Start server (default port 8099 recommended for CLI QoL):
-  - ./bin/aitermd -addr :8099
+- Start server (default port 5011 recommended for CLI QoL):
+  - ./bin/aitermd -addr :5011
 - Default CLI server:
-  - If --server is omitted, CLI uses http://127.0.0.1:8099 (override with AITERM_SERVER env var).
+  - If --server is omitted, CLI uses http://127.0.0.1:5011 (override with AITERM_SERVER env var).
 
 CLI Usage
 - Non‑PTY command:
