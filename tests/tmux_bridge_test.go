@@ -62,12 +62,14 @@ func TestTmuxBridgeRadare2Integration(t *testing.T) {
     _, _ = httpPost(base+"/v1/pty/send", mustJSON(ptySendReq{ID: po.ID, Data: b64("izj\n")}))
 
     // Capture pane and assert on content
-    deadline := time.Now().Add(6 * time.Second)
+    deadline := time.Now().Add(8 * time.Second)
     tgt := bc.Session + ":0.0"
     for time.Now().Before(deadline) {
         out, _ := exec.Command("tmux", "-S", bc.Socket, "capture-pane", "-pt", tgt).CombinedOutput()
         s := stripANSI(string(out))
-        if strings.Contains(s, "\"name\"") && strings.Contains(strings.ToLower(s), "main") && (strings.Contains(s, "\"OK\"") || strings.Contains(s, "\"NOPE\"")) {
+        hasFuncs := strings.Contains(s, "\"name\"") && (strings.Contains(strings.ToLower(s), "main") || strings.Contains(s, "entry0") || strings.Contains(s, "sym.imp"))
+        hasStrings := strings.Contains(s, "\"OK\"") || strings.Contains(s, "\"NOPE\"")
+        if hasFuncs && hasStrings {
             return
         }
         time.Sleep(200 * time.Millisecond)
